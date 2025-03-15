@@ -1,14 +1,27 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS  # Import CORS
+from flask_cors import CORS
 import pickle
 import re
+import os
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# Load the pre-trained model and TF-IDF vectorizer
-model = pickle.load(open(r"senti\backend\resume.pickle", "rb"))
-tfidf = pickle.load(open(r"senti\backend\tfidf.pickle", "rb"))
+# Define paths for model and vectorizer
+MODEL_PATH = os.path.join("senti", "backend", "resume.pickle")
+TFIDF_PATH = os.path.join("senti", "backend", "tfidf.pickle")
+
+# Load the model and TF-IDF vectorizer
+try:
+    with open(MODEL_PATH, "rb") as model_file:
+        model = pickle.load(model_file)
+    
+    with open(TFIDF_PATH, "rb") as tfidf_file:
+        tfidf = pickle.load(tfidf_file)
+
+except FileNotFoundError as e:
+    print(f"Error: {e}")
+    model, tfidf = None, None  # Prevent app from crashing if files are missing
 
 # Resume category mapping
 category_mapping = {
@@ -25,7 +38,7 @@ category_mapping = {
 def clean_resume(txt):
     """Clean resume text by removing unwanted characters and URLs."""
     clean_text = re.sub(r"http\S+", " ", txt)  # Remove URLs
-    clean_text = re.sub(r"\b(RT|CC)\b", " ", clean_text)  # Remove retweets (RT) and copy-comments (CC)
+    clean_text = re.sub(r"\b(RT|CC)\b", " ", clean_text)  # Remove retweets and CCs
     clean_text = re.sub(r"#\S+", " ", clean_text)  # Remove hashtags
     clean_text = re.sub(r"@\S+", " ", clean_text)  # Remove mentions
     clean_text = re.sub(r"[\"!#$%&()*+,-./:;<=>?@\[\\\]^_`{|}~]", " ", clean_text)  # Remove special characters
@@ -36,6 +49,9 @@ def clean_resume(txt):
 @app.route("/predict", methods=["POST"])
 def predict():
     """Predicts the category of a given resume."""
+    if model is None or tfidf is None:
+        return jsonify({"error": "Model or TF-IDF vectorizer not loaded. Check file paths."}), 500
+
     try:
         data = request.get_json()
         
@@ -57,4 +73,4 @@ def predict():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, host="0.0.0.0")
